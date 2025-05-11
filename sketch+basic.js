@@ -17,7 +17,7 @@ const sketch = p => {
   p.keyPressed = function() {
     if (p.keyCode === 32) {
       isLoading = true;
-      chat("generate haiku");
+      chat("generate ");
     }
   };
 
