@@ -5,8 +5,8 @@ const openAIKey = import.meta.env.VITE_OPENAI_KEY;
 
 let openai;
 let isLoading = false;
-let scrollingText = "press spacebar to start inference"; 
-let textPositions = new Array(5); // Array for 5 text positions
+let scrollingText = "press space bar to start active inference on the origins of writing, translation, knowledge, and power"; 
+let textPositions = []; // Remove fixed size initialization
 const SCROLL_SPEED = 10;
 const SPACING = 200;
 let BAND_HEIGHT;
@@ -23,9 +23,9 @@ const SPEED_VARIATIONS = [0, 5, 10, 15, 20 ];
 const DIRECTION_CHANGE_PROBABILITY = 0.01; // 1% chance per frame
 const STOP_PROBABILITY = 0.005; // 0.5% chance to stop
 const STOP_DURATION = 1000; // Stop for 1 second
-let currentSpeeds = new Array(5).fill(SCROLL_SPEED);
-let stopTimers = new Array(5).fill(0);
-let directions = new Array(5).fill(1);
+let currentSpeeds = []; // Remove fixed size
+let stopTimers = []; // Remove fixed size
+let directions = []; // Remove fixed size
 
 // Add sound control variables
 const MINIMUM_SOUND_INTERVAL = 2000; // Minimum 2 seconds between sounds
@@ -39,41 +39,157 @@ let lastColorSwap = 0;
 let currentColors = [...COLORS]; // Make a copy of the original colors
 
 // Add generation state variables
-const GENERATION_INTERVAL = 30000; // 30 seconds
+const GENERATION_INTERVAL = 60000; // 60 seconds
 let isGenerating = false;
 let lastGenerationTime = 0;
 
+// Add after the other constants
+const LANGUAGES = {
+  'English': 'english',
+  'Spanish': 'spanish',
+  'French': 'french',
+  'German': 'german',
+  'Italian': 'italian',
+  'Portuguese': 'portuguese',
+  'Russian': 'russian',
+  'Japanese': 'japanese',
+  'Chinese': 'chinese',
+  'Korean': 'korean',
+  'Arabic': 'arabic',
+  'Hindi': 'hindi',
+  'Turkish': 'turkish',
+  'Dutch': 'dutch',
+  'Polish': 'polish',
+  'Swedish': 'swedish',
+  'Greek': 'greek',
+  'Vietnamese': 'vietnamese',
+  'Thai': 'thai',
+  'Hebrew': 'hebrew',
+  // African languages
+  'Swahili': 'swahili',
+  'Yoruba': 'yoruba',
+  'Zulu': 'zulu',
+  'Amharic': 'amharic',
+  'Hausa': 'hausa',
+  'Igbo': 'igbo',
+  'Xhosa': 'xhosa',
+  'Twi': 'twi',
+  'Somali': 'somali',
+  'Oromo': 'oromo',
+  // Indigenous languages
+  'Nahuatl': 'nahuatl',     // Aztec
+  'Quechua': 'quechua',     // Inca
+  'Maya': 'maya',           // Mayan
+  'Guarani': 'guarani',     // Paraguay/South America
+  'Navajo': 'navajo',       // North America
+  'Cherokee': 'cherokee',   // North America
+  'Maori': 'maori',         // New Zealand
+  'Hawaiian': 'hawaiian',   // Hawaii
+  'Ainu': 'ainu',           // Japan
+  'Sami': 'sami'           // Nordic indigenous
+};
+
+let currentLanguage = 'English';
+let languageMenuOpen = false;
+let languageButtonSize = 40;
+let languageMenuWidth = 150;
+let languageMenuHeight = 300; // Fixed height for visibility
+let languageScrollOffset = 0;
+
+// Add vertical writing system languages
+const VERTICAL_LANGUAGES = new Set([
+  'Chinese',
+  'Japanese',
+  'Korean',
+  'Mongolian'
+]);
+
+// Add constants for band counts
+const HORIZONTAL_BAND_COUNT = 5;
+const VERTICAL_BAND_COUNT = 5;
+
+// Add color swap timing
+const COLOR_SWAP_INTERVAL = 2000; // Swap colors every 2 seconds
+let lastColorSwapTime = 0;
+
+// Add text color array
+let textColors = [...COLORS]; // Separate array for text colors
+
+// Add UI constants
+const UI = {
+  padding: 20,
+  buttonSize: 40,
+  menuWidth: 150,
+  menuHeight: 300
+};
+
+// Add initial state tracking
+let hasLanguageBeenSelected = false;
+
+// Add language rotation timing
+const LANGUAGE_CHANGE_INTERVAL = 60000; // 60 seconds
+let lastLanguageChangeTime = 0;
+
+// Add sound initialization variables at the top with other variables
+let isSoundInitialized = false;
+
 const sketch = p => {
   p.setup = function() {
-    BAND_HEIGHT = p.windowHeight / 5;
+    const isVertical = VERTICAL_LANGUAGES.has(currentLanguage);
+    if (isVertical) {
+      BAND_HEIGHT = p.windowWidth / VERTICAL_BAND_COUNT;
+      fontSize = BAND_HEIGHT * 0.8;
+    } else {
+      BAND_HEIGHT = p.windowHeight / HORIZONTAL_BAND_COUNT;
+      fontSize = BAND_HEIGHT - 30;
+    }
+    
     p.createCanvas(p.windowWidth, p.windowHeight);
-    fontSize = BAND_HEIGHT - 30;
     p.textFont('Helvetica');
     p.textSize(fontSize);
-    p.textAlign(p.CENTER, p.CENTER); // Center both horizontally and vertically
+    p.textAlign(p.CENTER, p.CENTER);
     
-    for (let i = 0; i < 5; i++) {
-      textPositions[i] = i % 2 === 0 ? p.width : 0;
-      directions[i] = i % 2 === 0 ? -1 : 1;
-      currentSpeeds[i] = SCROLL_SPEED;
-      stopTimers[i] = 0;
+    // Initialize positions based on direction
+    const bandCount = HORIZONTAL_BAND_COUNT;
+    textPositions = new Array(bandCount).fill(0);
+    directions = new Array(bandCount).fill(1);
+    currentSpeeds = new Array(bandCount).fill(SCROLL_SPEED);
+    stopTimers = new Array(bandCount).fill(0);
+    
+    for (let i = 0; i < bandCount; i++) {
+      if (isVertical) {
+        textPositions[i] = i % 2 === 0 ? p.height : 0;
+        directions[i] = i % 2 === 0 ? -1 : 1;
+      } else {
+        textPositions[i] = i % 2 === 0 ? p.width : 0;
+        directions[i] = i % 2 === 0 ? -1 : 1;
+      }
     }
   };
 
   p.windowResized = function() {
-    BAND_HEIGHT = p.windowHeight / 5;
+    const isVertical = VERTICAL_LANGUAGES.has(currentLanguage);
+    if (isVertical) {
+      BAND_HEIGHT = p.windowWidth / VERTICAL_BAND_COUNT;
+      fontSize = BAND_HEIGHT * 0.8;
+    } else {
+      BAND_HEIGHT = p.windowHeight / HORIZONTAL_BAND_COUNT;
+      fontSize = BAND_HEIGHT - 30;
+    }
     p.resizeCanvas(p.windowWidth, p.windowHeight);
-    fontSize = BAND_HEIGHT - 30; // Reduced by 30 pixels
     p.textSize(fontSize);
     p.textLeading(BAND_HEIGHT);
   };
 
   p.keyPressed = function() {
     if (p.keyCode === 32) { // Spacebar
-      isGenerating = !isGenerating; // Toggle generation state
-      isLoading = true;
+      isGenerating = !isGenerating;
       if (isGenerating) {
+        isLoading = true; // Show loading animation
+        loadingPhase = 0; // Reset loading animation phase
+        initAudio(); // Initialize audio system
         generateNewText();
+        lastLanguageChangeTime = Date.now();
       } else {
         stopActiveSound();
       }
@@ -85,7 +201,15 @@ const sketch = p => {
       const completion = await openai.chat.completions.create({
         model: "gpt-4",
         temperature: 0.8,
-        messages: [{ "role": "user", "content": prompt }]
+        messages: [{ 
+          "role": "user", 
+          "content": `Translate this to ${currentLanguage} and maintain this epistemological reflection on active inference: 
+          "Through the recursive dance of writing and translation, consciousness performs its predictive synthesis, 
+          a perpetual negotiation between prior knowledge and novel expression. Each act of translation becomes 
+          an epistemic leap, where meaning emerges from the active inference between languages, between knowing 
+          and becoming. In this cognitive choreography, we write not just to express, but to know - 
+          each word a hypothesis about the nature of understanding itself."`
+        }]
       });
 
       // Remove punctuation and convert to lowercase
@@ -94,152 +218,417 @@ const sketch = p => {
         .replace(/\n/g, " ")
         .toLowerCase();
       
-      for (let i = 0; i < 5; i++) {
-        textPositions[i] = i % 2 === 0 ? p.width : 0;
+      // Initialize positions based on language type
+      const isVertical = VERTICAL_LANGUAGES.has(currentLanguage);
+      const bandCount = isVertical ? VERTICAL_BAND_COUNT : HORIZONTAL_BAND_COUNT;
+      
+      for (let i = 0; i < bandCount; i++) {
+        if (isVertical) {
+          textPositions[i] = i % 2 === 0 ? p.height : 0;
+        } else {
+          textPositions[i] = i % 2 === 0 ? p.width : 0;
+        }
       }
+      
       isLoading = false;
       playTextAppearSound();
     } catch (err) {
       console.error("An error occurred in the chat function:", err);
       isLoading = false;
-      scrollingText = "error occurred press spacebar to try again";
+      scrollingText = "error occurred please select a language to try again";
     }
   }
 
-  function generateNewText() {
-    chat("hey i want to tell you about this thing that happens when youre reading right now your eyes are doing this prediction dance across these words and your brain is running this amazing active inference loop where every saccade every tiny eye movement is really a question a hypothesis about whats coming next and your visual system is saying hey is this the word i think it is and sometimes it is and sometimes it isnt and thats how you learn by testing these predictions against what you actually see and isnt it beautiful how reading is really just this endless cycle of action and perception where your eye movements are actions guided by your predictions and every fixation is a test of those predictions and your brain is constantly updating its model of the text like some kind of neural scientist running experiments with every glance and when the predictions are wrong thats when the learning happens thats when your brain adjusts its model and gets better at surfing these waves of symbols and meaning oh superman oh judge oh mom and dad");
+  async function generateNewText() {
+    try {
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4",
+        temperature: 0.8,
+        messages: [{ 
+          role: "user", 
+          content: `Write a poetic reflection IN ${currentLanguage} LANGUAGE (not translated, but written directly in ${currentLanguage}) about writing systems, focusing on:
+          - the historical evolution of this specific writing system
+          - how colonization and power have shaped this language's writing
+          - the unique characteristics of this script or writing tradition
+          - how this writing system preserves cultural memory
+          
+          Important: The response must be ENTIRELY in ${currentLanguage}, not in English.
+          For indigenous languages that were primarily oral, reflect on their modern written forms.`
+        }]
+      });
+
+      // Remove punctuation and convert to lowercase
+      scrollingText = completion.choices[0].message.content
+        .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()'"]/g, "")
+        .replace(/\n/g, " ")
+        .toLowerCase();
+      
+      if (isGenerating) {
+        playTextAppearSound();
+      }
+      
+      isLoading = false;
+      
+    } catch (err) {
+      console.error("An error occurred in the chat function:", err);
+      // Set error message in the current language if possible
+      if (currentLanguage === 'Spanish') {
+        scrollingText = "ocurrió un error presiona la barra espaciadora para intentar de nuevo";
+      } else if (currentLanguage === 'French') {
+        scrollingText = "une erreur sest produite appuyez sur la barre despace pour réessayer";
+      } else {
+        scrollingText = "error occurred press space bar to try again";
+      }
+      isLoading = false;
+    }
   }
 
   p.draw = function() {
     const now = Date.now();
-    
-    // Check if we should generate new text
-    if (isGenerating && now - lastGenerationTime > GENERATION_INTERVAL) {
-      generateNewText();
-      lastGenerationTime = now;
-    }
-
-    p.background(BG_COLOR);
+    const isVertical = VERTICAL_LANGUAGES.has(currentLanguage);
     
     if (isLoading) {
       displayLoader(p);
-    } else {
-      // Modify the color swapping check in draw
-      if (Math.random() < COLOR_SWAP_PROBABILITY && 
-          Date.now() - lastColorSwap > COLOR_SWAP_COOLDOWN) {
-        swapRandomColors();
-        lastColorSwap = Date.now();
-      }
-
-      // Draw colored bands with current colors
-      for (let i = 0; i < 5; i++) {
-        p.fill(currentColors[i]);
+      return; // Don't draw anything else while loading
+    }
+    
+    p.background(BG_COLOR);
+    
+    // Check if we should change language and generate new text
+    if (isGenerating && now - lastLanguageChangeTime > LANGUAGE_CHANGE_INTERVAL) {
+      isLoading = true; // Show loading for language changes
+      loadingPhase = 0; // Reset loading animation
+      const availableLanguages = Object.keys(LANGUAGES).filter(lang => lang !== currentLanguage);
+      const randomIndex = Math.floor(Math.random() * availableLanguages.length);
+      currentLanguage = availableLanguages[randomIndex];
+      
+      generateNewText();
+      lastLanguageChangeTime = now;
+    }
+    
+    // Check if it's time to swap colors
+    if (now - lastColorSwapTime > COLOR_SWAP_INTERVAL) {
+      swapRandomColors(currentColors);
+      swapRandomColors(textColors);
+      lastColorSwapTime = now;
+    }
+    
+    // Draw bands first
+    for (let i = 0; i < HORIZONTAL_BAND_COUNT; i++) {
+      p.fill(currentColors[i]);
+      if (isVertical) {
+        const bandWidth = p.width / HORIZONTAL_BAND_COUNT;
+        p.rect(bandWidth * i, 0, bandWidth, p.height);
+      } else {
         p.rect(0, BAND_HEIGHT * i, p.width, BAND_HEIGHT);
       }
+    }
+    
+    // Draw scrolling text with corresponding colors
+    for (let i = 0; i < HORIZONTAL_BAND_COUNT; i++) {
+      const xPos = isVertical ? (p.width / HORIZONTAL_BAND_COUNT) * (i + 0.5) : textPositions[i];
+      const yPos = isVertical ? textPositions[i] : BAND_HEIGHT * (i + 0.5);
       
-      // Draw text with dynamic movement
-      p.fill(255);
-      for (let i = 0; i < 5; i++) {
-        const yPos = BAND_HEIGHT * (i + 0.5);
-        drawScrollingText(p, textPositions[i], yPos);
-        
-        // Check if stopped
-        if (stopTimers[i] > now) {
-          continue; // Skip movement if stopped
+      p.fill(textColors[i]); // Use text color array
+      drawScrollingText(p, xPos, yPos);
+      
+      // Skip if stopped
+      if (stopTimers[i] > now) continue;
+      
+      // Random direction and speed changes for both vertical and horizontal
+      if (Math.random() < DIRECTION_CHANGE_PROBABILITY) {
+        directions[i] *= -1;
+        currentSpeeds[i] = SPEED_VARIATIONS[Math.floor(Math.random() * SPEED_VARIATIONS.length)];
+      }
+      
+      // Random stops for both vertical and horizontal
+      if (Math.random() < STOP_PROBABILITY) {
+        stopTimers[i] = now + STOP_DURATION;
+        continue;
+      }
+      
+      // Update positions
+      textPositions[i] += currentSpeeds[i] * directions[i];
+      
+      // Reset positions based on direction
+      if (isVertical) {
+        if (directions[i] < 0) {
+          if (textPositions[i] < -p.height) {
+            textPositions[i] = p.height;
+            if (shouldTriggerSound()) playTextAppearSound();
+          }
+        } else {
+          if (textPositions[i] > p.height * 2) {
+            textPositions[i] = -p.height;
+            if (shouldTriggerSound()) playTextAppearSound();
+          }
         }
-        
-        // Random direction and speed changes
-        if (Math.random() < DIRECTION_CHANGE_PROBABILITY) {
-          directions[i] *= -1; // Reverse direction
-          currentSpeeds[i] = SPEED_VARIATIONS[Math.floor(Math.random() * SPEED_VARIATIONS.length)];
-        }
-        
-        // Random stops
-        if (Math.random() < STOP_PROBABILITY) {
-          stopTimers[i] = now + STOP_DURATION;
-          continue;
-        }
-        
-        // Update positions with current speed and direction
-        textPositions[i] += currentSpeeds[i] * directions[i];
-        
-        // Reset positions
+      } else {
+        // Reset positions for horizontal movement
         if (directions[i] < 0) {
           if (textPositions[i] < -(p.textWidth(scrollingText) + SPACING)) {
             textPositions[i] = p.width;
-            if (shouldTriggerSound()) {
-              playTextAppearSound();
-            }
+            if (shouldTriggerSound()) playTextAppearSound();
           }
         } else {
           if (textPositions[i] > p.width + SPACING) {
             textPositions[i] = -p.textWidth(scrollingText);
-            if (shouldTriggerSound()) {
-              playTextAppearSound();
-            }
+            if (shouldTriggerSound()) playTextAppearSound();
           }
         }
       }
     }
+    
+    drawLanguageSelector();
   };
+
+  function drawLanguageSelector() {
+    const x = UI.padding;
+    const y = p.height - UI.padding - languageButtonSize;
+    
+    // Save current text settings
+    const currentAlign = p.textAlign();
+    const currentSize = fontSize;
+    
+    // Draw main button with hover effect
+    p.noStroke();
+    const isButtonHovered = p.mouseX >= x && p.mouseX <= x + languageButtonSize &&
+                           p.mouseY >= y && p.mouseY <= y + languageButtonSize;
+    p.fill(isButtonHovered ? 200 : 255);
+    p.rect(x, y, languageButtonSize, languageButtonSize, 5);
+    p.fill(0);
+    p.textSize(20);
+    p.textAlign(p.CENTER, p.CENTER);
+    p.text(currentLanguage.slice(0, 2).toUpperCase(), x + languageButtonSize/2, y + languageButtonSize/2);
+
+    // Draw dropdown menu if open
+    if (languageMenuOpen) {
+      p.textSize(16);
+      Object.keys(LANGUAGES).forEach((lang, i) => {
+        const yPos = y - languageMenuHeight + (i * 30) + languageScrollOffset;
+        
+        // Only draw if in visible area
+        if (yPos > y - languageMenuHeight - 30 && yPos < y + 30) {
+          // Check if mouse is over this item
+          const isHovered = p.mouseX >= x && p.mouseX <= x + languageMenuWidth &&
+                           p.mouseY >= yPos && p.mouseY <= yPos + 30;
+          
+          // Draw background for selected or hovered items
+          if (lang === currentLanguage || isHovered) {
+            p.fill(255, lang === currentLanguage ? 100 : 50);
+            p.rect(x, yPos, languageMenuWidth, 30, 5);
+          }
+          
+          // Draw language text
+          p.fill(255);
+          p.textAlign(p.LEFT, p.CENTER);
+          p.text(lang, x + 10, yPos + 15);
+        }
+      });
+    }
+    
+    // Restore original text settings
+    p.textSize(currentSize);
+    p.textAlign(currentAlign);
+  }
+
+  p.mousePressed = function() {
+    // Language selector click handling
+    const buttonX = UI.padding;
+    const buttonY = p.height - UI.padding - languageButtonSize;
+    
+    if (p.mouseX >= buttonX && p.mouseX <= buttonX + languageButtonSize &&
+        p.mouseY >= buttonY && p.mouseY <= buttonY + languageButtonSize) {
+      languageMenuOpen = !languageMenuOpen;
+      return;
+    }
+    
+    if (languageMenuOpen &&
+        p.mouseX >= buttonX && p.mouseX <= buttonX + languageMenuWidth &&
+        p.mouseY >= buttonY - languageMenuHeight && p.mouseY <= buttonY) {
+      const index = Math.floor((p.mouseY - (buttonY - languageMenuHeight) - languageScrollOffset) / 30);
+      const newLang = Object.keys(LANGUAGES)[index];
+      if (newLang && newLang !== currentLanguage) {
+        currentLanguage = newLang;
+        languageMenuOpen = false;
+        isLoading = true;
+        hasLanguageBeenSelected = true; // Set flag on first selection
+        generateNewText();
+        lastGenerationTime = Date.now(); // Reset generation timer
+      }
+    } else if (!isClickInMenu(p.mouseX, p.mouseY)) {
+      languageMenuOpen = false;
+    }
+  };
+
+  function isClickInMenu(x, y) {
+    const buttonX = UI.padding;
+    const buttonY = p.height - UI.padding - languageButtonSize;
+    return (
+      x >= buttonX && 
+      x <= buttonX + languageMenuWidth &&
+      y >= buttonY - languageMenuHeight &&
+      y <= buttonY + languageButtonSize
+    );
+  }
 };
 
+// Modify drawScrollingText function to handle vertical text
 function drawScrollingText(p, startX, yPos) {
+  if (VERTICAL_LANGUAGES.has(currentLanguage)) {
+    drawVerticalText(p, startX, yPos);
+  } else {
+    drawHorizontalText(p, startX, yPos);
+  }
+}
+
+// Split the original horizontal text drawing
+function drawHorizontalText(p, startX, yPos) {
   let currentX = startX;
   
-  // Forward text
+  // Color is already set in draw function
   while (currentX < p.width) {
-    p.text(scrollingText, currentX + p.textWidth(scrollingText)/2, yPos); // Center text around x position
+    p.text(scrollingText, currentX + p.textWidth(scrollingText)/2, yPos);
     currentX += p.textWidth(scrollingText) + SPACING;
   }
   
-  // Backward text to fill gaps
   currentX = startX - p.textWidth(scrollingText) - SPACING;
   while (currentX + p.textWidth(scrollingText) > 0) {
-    p.text(scrollingText, currentX + p.textWidth(scrollingText)/2, yPos); // Center text around x position
+    p.text(scrollingText, currentX + p.textWidth(scrollingText)/2, yPos);
     currentX -= p.textWidth(scrollingText) + SPACING;
   }
 }
 
+// Add vertical text drawing
+function drawVerticalText(p, startX, yPos) {
+  p.push();
+  p.textAlign(p.CENTER, p.CENTER);
+  
+  let currentY = yPos;
+  const textHeight = p.textAscent() + p.textDescent();
+  const totalHeight = textHeight * scrollingText.length;
+  const charSpacing = textHeight * 1.2;
+  
+  // Center text in band
+  const bandCenter = startX;
+  
+  // Draw text moving up/down with improved spacing
+  while (currentY < p.height) {
+    drawVerticalString(p, scrollingText, bandCenter, currentY, charSpacing);
+    currentY += totalHeight + SPACING;
+  }
+  
+  currentY = yPos - totalHeight - SPACING;
+  while (currentY + totalHeight > 0) {
+    drawVerticalString(p, scrollingText, bandCenter, currentY, charSpacing);
+    currentY -= totalHeight + SPACING;
+  }
+  
+  p.pop();
+}
+
+// Improved vertical string drawing
+function drawVerticalString(p, str, x, y, charSpacing) {
+  const chars = str.split('');
+  
+  p.push();
+  p.translate(x, y);
+  
+  chars.forEach((char, i) => {
+    p.push();
+    if (VERTICAL_LANGUAGES.has(currentLanguage)) {
+      p.translate(0, i * charSpacing);
+    } else {
+      p.translate(0, i * charSpacing);
+      p.rotate(p.PI/2);
+    }
+    // Color is already set in draw function
+    p.text(char, 0, 0);
+    p.pop();
+  });
+  
+  p.pop();
+}
+
 function displayLoader(p) {
+  p.background(BG_COLOR); // Clear background first
   p.noStroke();
+  const isVertical = VERTICAL_LANGUAGES.has(currentLanguage);
   
-  // Draw all bands in black first
-  for (let i = 0; i < 5; i++) {
-    p.fill(BG_COLOR);
-    p.rect(0, BAND_HEIGHT * i, p.width, BAND_HEIGHT);
-  }
-  
-  // Animate colored bands sequentially
-  const numBandsToShow = Math.floor(loadingPhase);
-  for (let i = 0; i < numBandsToShow; i++) {
-    p.fill(currentColors[i]);
-    p.rect(0, BAND_HEIGHT * i, p.width, BAND_HEIGHT);
-  }
-  
-  // Animate the current band partially
-  if (numBandsToShow < 5) {
-    const partialWidth = (loadingPhase % 1) * p.width;
-    p.fill(currentColors[numBandsToShow]);
-    p.rect(0, BAND_HEIGHT * numBandsToShow, partialWidth, BAND_HEIGHT);
+  if (isVertical) {
+    const bandWidth = p.width / HORIZONTAL_BAND_COUNT;
+    
+    // Draw vertical bands
+    for (let i = 0; i < HORIZONTAL_BAND_COUNT; i++) {
+      p.fill(BG_COLOR);
+      p.rect(bandWidth * i, 0, bandWidth, p.height);
+    }
+    
+    // Animate colored bands sequentially
+    const numBandsToShow = Math.floor(loadingPhase);
+    for (let i = 0; i < numBandsToShow; i++) {
+      p.fill(currentColors[i]);
+      p.rect(bandWidth * i, 0, bandWidth, p.height);
+    }
+    
+    // Animate the current band partially
+    if (numBandsToShow < HORIZONTAL_BAND_COUNT) {
+      const partialHeight = (loadingPhase % 1) * p.height;
+      p.fill(currentColors[numBandsToShow]);
+      p.rect(bandWidth * numBandsToShow, 0, bandWidth, partialHeight);
+    }
+  } else {
+    // Original horizontal bands
+    for (let i = 0; i < HORIZONTAL_BAND_COUNT; i++) {
+      p.fill(BG_COLOR);
+      p.rect(0, BAND_HEIGHT * i, p.width, BAND_HEIGHT);
+    }
+    
+    const numBandsToShow = Math.floor(loadingPhase);
+    for (let i = 0; i < numBandsToShow; i++) {
+      p.fill(currentColors[i]);
+      p.rect(0, BAND_HEIGHT * i, p.width, BAND_HEIGHT);
+    }
+    
+    if (numBandsToShow < HORIZONTAL_BAND_COUNT) {
+      const partialWidth = (loadingPhase % 1) * p.width;
+      p.fill(currentColors[numBandsToShow]);
+      p.rect(0, BAND_HEIGHT * numBandsToShow, partialWidth, BAND_HEIGHT);
+    }
   }
   
   // Add loading text
-  p.fill(255); // White text
+  p.fill(255);
   p.textSize(fontSize);
   p.textAlign(p.CENTER, p.CENTER);
-  p.text("starting inference", p.width/2, p.height/2);
+  p.text(currentLanguage, p.width/2, p.height/2);
   
-  // Update animation phase
   loadingPhase += 0.02;
-  if (loadingPhase >= 5) {
-    loadingPhase = 0;
-  }
+  if (loadingPhase >= 5) loadingPhase = 0;
 }
 
+// Add sound initialization function
 function initAudio() {
-  audioContext = new (window.AudioContext || window.webkitAudioContext)();
-  isAudioInitialized = true;
+  if (!audioContext) {
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  
+  if (!isSoundInitialized) {
+    // Initialize oscillators and other audio components
+    activeOscillators = {
+      bass: audioContext.createOscillator(),
+      sub: audioContext.createOscillator(),
+      lead: audioContext.createOscillator()
+    };
+    
+    // Set up oscillator properties
+    Object.values(activeOscillators).forEach(osc => {
+      osc.connect(audioContext.destination);
+      osc.start();
+    });
+    
+    isSoundInitialized = true;
+  }
 }
 
 function analyzeTextComplexity(text) {
@@ -452,16 +841,15 @@ if (document.readyState === 'complete') {
   document.addEventListener("DOMContentLoaded", onReady);
 }
 
-// Add color swapping function
-function swapRandomColors() {
-  const index1 = Math.floor(Math.random() * currentColors.length);
-  let index2 = Math.floor(Math.random() * (currentColors.length - 1));
-  if (index2 >= index1) index2++; // Avoid same index
+// Update swapRandomColors to work with any color array
+function swapRandomColors(colorArray) {
+  const index1 = Math.floor(Math.random() * colorArray.length);
+  let index2 = Math.floor(Math.random() * (colorArray.length - 1));
+  if (index2 >= index1) index2++;
   
-  // Swap colors
-  const temp = currentColors[index1];
-  currentColors[index1] = currentColors[index2];
-  currentColors[index2] = temp;
+  const temp = colorArray[index1];
+  colorArray[index1] = colorArray[index2];
+  colorArray[index2] = temp;
 }
 
 
